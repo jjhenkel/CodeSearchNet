@@ -202,7 +202,9 @@ class PythonParser(LanguageParser):
             class_metadata['end_point'] = _class.end_point
             definitions.append(class_metadata)
 
-            functions = PythonParser.get_function_definitions(_class)
-            definitions.extend(PythonParser.__process_functions(functions, blob, class_metadata['identifier']))
+            for child in _class.children:
+                if child.type == 'block':
+                    functions = PythonParser.get_function_definitions(child)
+                    definitions.extend(PythonParser.__process_functions(functions, blob, class_metadata['identifier']))
 
         return definitions
