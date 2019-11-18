@@ -76,9 +76,8 @@ class JavaParser(LanguageParser):
             'identifier': '',
             'parameters': '',
         }
-
         declarators = []
-        traverse_type(function_node, declarators, '{}_declarator'.format(function_node.type.split('_')[0]))
+        traverse_type(function_node, declarators, '{}_declaration'.format(function_node.type.split('_')[0]))
         parameters = []
         for n in declarators[0].children:
             if n.type == 'identifier':

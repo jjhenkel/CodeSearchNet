@@ -12,7 +12,7 @@ def tokenize_docstring(docstring: str) -> List[str]:
 def tokenize_code(node, blob: str, nodes_to_exclude: Optional[Set]=None) -> List:
     tokens = []
     traverse(node, tokens)
-    if nodes_to_exclude == {None}:
+    if nodes_to_exclude == {None} or nodes_to_exclude is None:
         return [match_from_span(token, blob) for token in tokens]
     else:
         return [match_from_span(token, blob) for token in tokens if token not in nodes_to_exclude]
