@@ -7,6 +7,7 @@ Options:
     --language LANGUAGE             Language
 """
 import re
+import sys
 import json
 import hashlib
 
@@ -40,19 +41,27 @@ def remove_func_name(name, tokens):
 
 
 if __name__ == '__main__':
-    args = docopt(__doc__)
+    SEEN_SHAS = {}
 
-    DataProcessor.PARSER.set_language(Language('/src/build/py-tree-sitter-languages.so', args['--language']))
-    processor = DataProcessor(language=args['--language'],
-                              language_parser=LANGUAGE_METADATA[args['--language']]['language_parser'])
+    for line in sys.stdin:
+        as_json = json.loads(line)
+    
+        DataProcessor.PARSER.set_language(Language('/src/build/py-tree-sitter-languages.so', as_json['language']))
+        processor = DataProcessor(language=as_json['language'],
+                                  language_parser=LANGUAGE_METADATA[as_json['language']]['language_parser'])
+    
+        functions = processor.process_blob(as_json['code'])
+    
+        for function in functions:
+            sha256 = hashlib.sha256(
+                function["function"].strip().encode('utf-8')
+            ).hexdigest()
 
-    functions = processor.process_single_file(args['INPUT_FILEPATH'])
+            if sha256 in SEEN_SHAS:
+                continue
+        
+            SEEN_SHAS[sha256] = True
 
-    for function in functions:
-        sha256 = hashlib.sha256(
-            function["function"].strip().encode('utf-8')
-        ).hexdigest()
-        with open('/mnt/outputs/{}.json'.format(sha256), 'w') as out_file:
             tokens_pre, tokens_post = ([], [])
             
             try:
@@ -63,15 +72,14 @@ if __name__ == '__main__':
             except:
                 pass
         
-            out_file.write(json.dumps({
+            print(json.dumps({
                 "language": function["language"],
-                "identifier_scope": '.'.join(function["identifier"].split('.')[:-1]) + "::",
                 "identifier": function["identifier"].split('.')[-1],
                 "target_tokens": subtokenize(function["identifier"].split('.')[-1]),
                 "source_tokens": tokens_post,
                 "elided_tokens": tokens_pre,
-                "source_code": function["function"],
+                "source_code": function["function"] if function["language"] != "java" else (
+                    'class WRAPPER {\n' + function["function"] + '\n}\n'
+                ),
                 "sha256_hash": sha256
-            }, indent=2))
-        with open('/mnt/outputs/{}.{}'.format(sha256, "java" if function["language"] == "java" else "py"), 'w') as out_file:
-            out_file.write(function["function"])
+            }))

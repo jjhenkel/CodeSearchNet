@@ -121,6 +121,16 @@ class DataProcessor:
 
         return [self.extract_function_data(func, '', '', '') for func in functions if len(func['function_tokens']) > 1]
 
+    def process_blob(self, blob) -> List[Dict[str, Any]]:
+        tree = DataProcessor.PARSER.parse(blob.encode())
+        functions = self.language_parser.get_definition(tree, blob)
+        if functions is None:
+            return []
+        return [
+            self.extract_function_data(func, '', '', '')
+            for func in functions if len(func['function_tokens']) > 1
+        ]
+
     def extract_function_data(self, function: Dict[str, Any], nwo, path: str, sha: str):
         return {
             'nwo': nwo,
