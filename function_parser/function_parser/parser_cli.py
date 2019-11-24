@@ -50,7 +50,12 @@ if __name__ == '__main__':
         processor = DataProcessor(language=as_json['language'],
                                   language_parser=LANGUAGE_METADATA[as_json['language']]['language_parser'])
     
-        functions = processor.process_blob(as_json['code'])
+        the_code = as_json['code']
+
+        if as_json['granularity'] == 'method' and as_json['language'] == 'java':
+            the_code = "class WRAPPER {\n" + the_code + "\n}\n"
+
+        functions = processor.process_blob(the_code)
     
         for function in functions:
             sha256 = hashlib.sha256(
