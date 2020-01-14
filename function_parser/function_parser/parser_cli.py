@@ -7,11 +7,19 @@ Options:
     --language LANGUAGE             Language
 """
 import re
+import os
 import sys
 import json
+import gzip
+import resource
 import hashlib
 import javalang
 import multiprocessing
+
+from tqdm import tqdm
+
+from os import listdir
+from os.path import isfile, join
 
 from docopt import docopt
 from tree_sitter import Language
@@ -50,15 +58,10 @@ def process(target):
         language_parser=LANGUAGE_METADATA[sys.argv[1]]['language_parser']
     )
     
-    functions = processor.process_blob(target['the_code'])
-         
-    if target['language'] == 'java':
-        try:
-            javalang.parse.parse(target['the_code'])
-        except:
-            return False, []
-
     results = []
+
+    functions = processor.process_blob(target['the_code'])
+        
     for function in functions:
         sha256 = hashlib.sha256(
             function["function"].strip().encode('utf-8')
@@ -83,50 +86,93 @@ def process(target):
             "source_code": function["function"] if function["language"] != "java" else (
                 'class WRAPPER {\n' + function["function"] + '\n}\n'
             ),
-            "sha256_hash": sha256
+            "sha256_hash": sha256,
+            "split": target['split']
         })
     
     return True, results
 
 
 if __name__ == '__main__':
-    SEEN_SHAS = set()
+    resource.setrlimit(resource.RLIMIT_STACK, (2**29,-1))
+    sys.setrecursionlimit(10**6)
 
     pool = multiprocessing.Pool()
     targets = []
 
-    print("    - Starting phase 1...", file=sys.stderr)
-    total = 1
-    accepts = 1
-    for line in sys.stdin:
-        as_json = json.loads(line)
-        the_code = as_json['code']
+    if sys.argv[2] == "gz":
+        SEEN_SHAS = set()
 
-        if as_json['granularity'] == 'method' and as_json['language'] == 'java':
-            the_code = "class WRAPPER {\n" + the_code + "\n}\n"
+        for split in ["test", "train", "valid"]:
+            for line in gzip.open('/mnt/inputs/{}.jsonl.gz'.format(split)):
+                as_json = json.loads(line)
+                the_code = as_json['code']
 
-        targets.append({
-            'the_code': the_code,
-            'language': as_json['language']
-        })
+                if as_json['granularity'] == 'method' and as_json['language'] == 'java':
+                    the_code = "class WRAPPER {\n" + the_code + "\n}\n"
 
-    print("    - Starting phase 2...", file=sys.stderr)
-    print("      - Processing {} targets".format(len(targets)), file=sys.stderr)
-    results = pool.map(process, targets)
-    print("      + Complete! ({} results)".format(len(results)), file=sys.stderr)
-
-    func_count = 0
-    for success, functions in results:
-        total += 1
-        if success:
-            accepts += 1
+                targets.append({
+                    'the_code': the_code,
+                    'language': as_json['language'],
+                    'split': split
+                })
         
-        for result in functions:
-            if result['sha256_hash'] not in SEEN_SHAS:
-                SEEN_SHAS.add(result['sha256_hash'])
-                print(json.dumps(result))
-                func_count += 1
-    
-    print("    - Parse success rate {:.2%}% ".format(float(accepts)/float(total)), file=sys.stderr)
-    print("    - Rejected {} files for parse failure".format(total - accepts), file=sys.stderr)
-    print("    + Finished. {} functions extraced".format(func_count), file=sys.stderr)
+        testZip = gzip.open('/mnt/outputs/test.jsonl.gz', 'wb')
+        trainZip = gzip.open('/mnt/outputs/train.jsonl.gz', 'wb')
+        validZip = gzip.open('/mnt/outputs/valid.jsonl.gz', 'wb')
+
+        outMap = {
+            'test': testZip,
+            'train': trainZip,
+            'valid': validZip
+        }
+
+        results = pool.imap_unordered(process, targets, 500)
+
+        func_count = 0
+        for _, functions in tqdm(results, desc="Normalizing:", total=len(targets)):
+            for result in functions:
+                if result['sha256_hash'] not in SEEN_SHAS:
+                    func_count += 1
+                    SEEN_SHAS.add(result['sha256_hash'])
+                    outMap[result['split']].write(
+                        (json.dumps(result) + '\n').encode()
+                    )
+        
+        testZip.close()
+        trainZip.close()
+        validZip.close()
+    else:
+        outMap = {}
+        
+        for location in sys.stdin:
+            os.makedirs(
+                os.path.dirname(location.replace('/raw-outputs', '/outputs').strip()),
+                exist_ok=True
+            )
+
+            outMap[location] = gzip.open(
+                location.replace('/raw-outputs', '/outputs').strip() + '.jsonl.gz',
+                'wb'
+            )
+
+            onlyfiles = [f for f in listdir(location.strip()) if isfile(join(location.strip(), f))]
+            for the_file in onlyfiles:
+                with open(join(location.strip(), the_file), 'r') as fhandle:
+                    targets.append({
+                        'the_code': fhandle.read(),
+                        'language': sys.argv[1],
+                        'split': location
+                    })
+
+        results = pool.imap_unordered(process, targets, 2000)
+
+        for _, functions in tqdm(results, total=len(targets), desc="Normalizing:"):
+            for result in functions:
+                outMap[result['split']].write(
+                    (json.dumps(result) + '\n').encode()
+                )
+
+    # print("    - Parse success rate {:.2%}% ".format(float(accepts)/float(total)), file=sys.stderr)
+    # print("    - Rejected {} files for parse failure".format(total - accepts), file=sys.stderr)
+    # print("    + Finished. {} functions extraced".format(func_count), file=sys.stderr)
