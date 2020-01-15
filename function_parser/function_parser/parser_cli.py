@@ -60,6 +60,12 @@ def process(target):
     
     results = []
 
+    if target['language'] == 'java':
+        try:
+            javalang.parse.parse(target['the_code'])
+        except:
+            return False, []
+
     functions = processor.process_blob(target['the_code'])
         
     for function in functions:
@@ -87,7 +93,8 @@ def process(target):
                 'class WRAPPER {\n' + function["function"] + '\n}\n'
             ),
             "sha256_hash": sha256,
-            "split": target['split']
+            "split": target['split'],
+            "from_file": target['from_file']
         })
     
     return True, results
@@ -114,7 +121,8 @@ if __name__ == '__main__':
                 targets.append({
                     'the_code': the_code,
                     'language': as_json['language'],
-                    'split': split
+                    'split': split,
+                    'from_file': ''
                 })
         
         testZip = gzip.open('/mnt/outputs/test.jsonl.gz', 'wb')
@@ -162,17 +170,25 @@ if __name__ == '__main__':
                     targets.append({
                         'the_code': fhandle.read(),
                         'language': sys.argv[1],
-                        'split': location
+                        'split': location,
+                        'from_file': the_file
                     })
 
         results = pool.imap_unordered(process, targets, 2000)
 
-        for _, functions in tqdm(results, total=len(targets), desc="Normalizing:"):
+        accepts = 0
+        total = 0
+        func_count = 0
+        for status, functions in tqdm(results, total=len(targets), desc="Normalizing:"):
+            total += 1
+            if status:
+                accepts += 1
             for result in functions:
+                func_count += 1
                 outMap[result['split']].write(
                     (json.dumps(result) + '\n').encode()
                 )
 
-    # print("    - Parse success rate {:.2%}% ".format(float(accepts)/float(total)), file=sys.stderr)
-    # print("    - Rejected {} files for parse failure".format(total - accepts), file=sys.stderr)
-    # print("    + Finished. {} functions extraced".format(func_count), file=sys.stderr)
+        print("    - Parse success rate {:.2%}% ".format(float(accepts)/float(total)), file=sys.stderr)
+        print("    - Rejected {} files for parse failure".format(total - accepts), file=sys.stderr)
+        print("    + Finished. {} functions extraced".format(func_count), file=sys.stderr)
