@@ -8,6 +8,7 @@ Options:
 """
 import re
 import os
+import ast
 import sys
 import json
 import gzip
@@ -63,6 +64,11 @@ def process(target):
     if target['language'] == 'java':
         try:
             javalang.parse.parse(target['the_code'])
+        except:
+            return False, []
+    elif target['language'] == 'python':
+        try:
+            ast.parse(target['the_code'])
         except:
             return False, []
 
@@ -138,7 +144,7 @@ if __name__ == '__main__':
         results = pool.imap_unordered(process, targets, 500)
 
         func_count = 0
-        for _, functions in tqdm(results, desc="Normalizing:", total=len(targets)):
+        for _, functions in tqdm(results, desc="  + Normalizing", total=len(targets)):
             for result in functions:
                 if result['sha256_hash'] not in SEEN_SHAS:
                     func_count += 1
@@ -179,7 +185,7 @@ if __name__ == '__main__':
         accepts = 0
         total = 0
         func_count = 0
-        for status, functions in tqdm(results, total=len(targets), desc="Normalizing:"):
+        for status, functions in tqdm(results, total=len(targets), desc="  + Normalizing"):
             total += 1
             if status:
                 accepts += 1
