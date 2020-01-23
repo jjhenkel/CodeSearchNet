@@ -141,10 +141,15 @@ if __name__ == '__main__':
             'valid': validZip
         }
 
-        results = pool.imap_unordered(process, targets, 500)
+        results = pool.imap_unordered(process, targets, 2000)
 
+        accepts = 0
+        total = 0
         func_count = 0
-        for _, functions in tqdm(results, desc="  + Normalizing", total=len(targets)):
+        for status, functions in tqdm(results, total=len(targets), desc="  + Normalizing"):
+            total += 1
+            if status:
+                accepts += 1
             for result in functions:
                 if result['sha256_hash'] not in SEEN_SHAS:
                     func_count += 1
@@ -152,7 +157,11 @@ if __name__ == '__main__':
                     outMap[result['split']].write(
                         (json.dumps(result) + '\n').encode()
                     )
-        
+
+        print("    - Parse success rate {:.2%}% ".format(float(accepts)/float(total)), file=sys.stderr)
+        print("    - Rejected {} files for parse failure".format(total - accepts), file=sys.stderr)
+        print("    + Finished. {} functions extraced".format(func_count), file=sys.stderr)
+
         testZip.close()
         trainZip.close()
         validZip.close()
