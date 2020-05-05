@@ -29,6 +29,9 @@ from language_data import LANGUAGE_METADATA
 from process import DataProcessor
 
 
+JAVA_FILTER_REGEX = re.compile('.*}\\s*\n}\n$', re.DOTALL)
+
+
 def subtokenize(identifier):
     RE_WORDS = re.compile(r'''
         # Find words in a string. Order matters!
@@ -130,7 +133,7 @@ if __name__ == '__main__':
                     'split': split,
                     'from_file': ''
                 })
-        
+
         testZip = gzip.open('/mnt/outputs/test.jsonl.gz', 'wb')
         trainZip = gzip.open('/mnt/outputs/train.jsonl.gz', 'wb')
         validZip = gzip.open('/mnt/outputs/valid.jsonl.gz', 'wb')
@@ -146,11 +149,17 @@ if __name__ == '__main__':
         accepts = 0
         total = 0
         func_count = 0
+        mismatches = 0
         for status, functions in tqdm(results, total=len(targets), desc="  + Normalizing"):
             total += 1
             if status:
                 accepts += 1
             for result in functions:
+                if result['language'] == 'java' and not JAVA_FILTER_REGEX.match(result['source_code']):
+                    # Skip non-matching (To avoid things like bad braces / abstract funcs...)
+                    mismatches += 1
+                    continue
+
                 if result['sha256_hash'] not in SEEN_SHAS:
                     func_count += 1
                     SEEN_SHAS.add(result['sha256_hash'])
@@ -160,6 +169,7 @@ if __name__ == '__main__':
 
         print("    - Parse success rate {:.2%}% ".format(float(accepts)/float(total)), file=sys.stderr)
         print("    - Rejected {} files for parse failure".format(total - accepts), file=sys.stderr)
+        print("    - Rejected {} files for regex mismatch".format(mismatches), file=sys.stderr)
         print("    + Finished. {} functions extraced".format(func_count), file=sys.stderr)
 
         testZip.close()
@@ -194,11 +204,17 @@ if __name__ == '__main__':
         accepts = 0
         total = 0
         func_count = 0
+        mismatches = 0
         for status, functions in tqdm(results, total=len(targets), desc="  + Normalizing"):
             total += 1
             if status:
                 accepts += 1
             for result in functions:
+                if result['language'] == 'java' and not JAVA_FILTER_REGEX.match(result['source_code']):
+                    # Skip non-matching (To avoid things like bad braces / abstract funcs...)
+                    mismatches += 1
+                    continue
+
                 func_count += 1
                 outMap[result['split']].write(
                     (json.dumps(result) + '\n').encode()
@@ -206,4 +222,5 @@ if __name__ == '__main__':
 
         print("    - Parse success rate {:.2%}% ".format(float(accepts)/float(total)), file=sys.stderr)
         print("    - Rejected {} files for parse failure".format(total - accepts), file=sys.stderr)
+        print("    - Rejected {} files for regex mismatch".format(mismatches), file=sys.stderr)
         print("    + Finished. {} functions extraced".format(func_count), file=sys.stderr)
