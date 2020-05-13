@@ -17,6 +17,9 @@ import hashlib
 import javalang
 import multiprocessing
 
+from fissix import pygram, pytree
+from fissix.pgen2 import driver, token
+
 from tqdm import tqdm
 
 from os import listdir
@@ -71,8 +74,9 @@ def process(target):
             return False, []
     elif target['language'] == 'python':
         try:
-            ast.parse(target['the_code'])
-        except:
+            parser = driver.Driver(pygram.python_grammar, convert=pytree.convert)
+            parser.parse_string(target['the_code'].strip() + '\n')
+        except Exception:
             return False, []
 
     functions = processor.process_blob(target['the_code'])
