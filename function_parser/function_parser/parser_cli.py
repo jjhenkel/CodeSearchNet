@@ -33,6 +33,56 @@ from process import DataProcessor
 
 
 JAVA_FILTER_REGEX = re.compile('.*}\\s*\n}\n$', re.DOTALL)
+JAVA_REJECT_REGEX = re.compile('\.class[^(]|\s+<[a-z]+>[a-zA-Z]+\(|<caret>|\$\.')
+
+# These are things that trip up Spoon's transformation framework in unique 
+# and non-trivial ways... (or, things that Spoon transforms just fine but 
+# the javaparser-based validation in this script chokes on during
+# re-normalization)
+BANNED_JAVA_SHAS = [
+    '02e60fd469d6e0503f0e768e9b1cb73efb51ecdaef05074b81dd75e21c4c4840',
+    '0a3933f95d6cf7812a0348f4fa357ac143dcac451e49af18fa5ebcbe9a4397b0',
+    '0a967a0d6262e7044439fe120ccd2186c56e527a0e502ed303ac4f1c0b4a4c6d',
+    '20c3745a60bcd4424a6cce7c67cb02818cbe22f5f0b8aa73ca78bceeb60bec83',
+    '38bff1849157e4f5871b86fd9f004ae9af18f2557ac7d5c4121d6a1af2cadfea',
+    '56d88fea3b60cfd13993148f3f29bab062716081ee78ad2b6c079189577a3dfe',
+    '57ef5953f0b42b970c77adf236f18ada8f458005afb9f180d6bd216eebe936fb',
+    '69546880be4395221e5b2153ab30c7cfa3f109a27df9cc244dac207be5abf8a4',
+    '6cb9ba6a1fbaf96a9bcbb5e7e39ae4d061ad5e0ed314fecba77b81861ecaef71',
+    '6da6e10f5344075612016ba7ff004789c3afcbe6d5439160780e930ef04c0c7c',
+    '72c3cda7c7e47884f260531b69e4f4d1f13ea15ed10ecbd7c9e516560a389c55',
+    '732326734bb3146c01aecdfe9611848f3111b7fcc936614f5a2cbcd5199d598d',
+    '7a1e930f44400dbc79f5eaf0cb87e90ce934a19134587a21751c5b17567a9c3f',
+    '84acb06dc645043c804841419c615b2ee88f1c392f0188dc5d2fd309eda32fba',
+    '8c8dde5071d255d43650774b9fbdda15312596aa3e489162565c115969a14492',
+    '8fd45531cf43275751ca90572e9129c60198214bbd9713bbd342e8556fdedd33',
+    'a668892305ba6ae4b988c018fc677890a0ba54dcf5390602aa460e4f2110dbc6',
+    'afcb7904eb8cbb272033be868ae342aec563fb7708c09bf32e9efbfc1d8d120d',
+    'b92828148256378e61781b1c18d446baa8420289a7505d447ed30210d6d3ce51',
+    'c4749f1574e604bf2390590802212a58b0a64745095d45c122e1d7d3286f5be3',
+    'c8b64aed809c4dc29e03d1d61a7e0d5673c73516d82d12416022a711f881dd8e',
+    'ca84c2d2650fc559a2ceee5b65c58177c10d9f33b4cb5abccc19d2f272b9af53',
+    'e2b8d4d9e644b972a51f05a9829db7f7803cda533c4c04f17e9d910a961d57d1',
+    'e8209eef1791c429e53b664fe6e13dbe0467aafb2fa4c3dfeadf6f6e5f4fbdad',
+    'f678a752a767dfcef0096ad524477841db4dce22b5b0620f887f953c50d4e0e0',
+    '1cccb96dde498f35dd9868065fded8e21912540dedf7b351abe8fb18b1dbb78f',
+    '48a8b198777e0b153cc9a27fbbfd937df62a5e03cda54f663ec0dcd597d7058e',
+    '564e75a1ae013b7e20e3d60379c7e98dbfbb96da7e9769a6798a18f93f7d7d54',
+    'ad534216a71973e984ef72d48727fb58761aa94f6d7dc9872b2483718456a51b',
+    'fd307d6fb17e7c549da124c7b2e75a35b6ed2eb425b9f9d276d17e21287a6b80',
+    'c1553011c7f6962f2bd9aba2206d9daec4383f05498a44e0ad4aa5996cbebd20',
+    '3f863ba944ce351742b95406d6b1c90f766a66186e13e475ef072e563e32bfbe',
+    '7e194647bd323a1ecf6bcf3a0601c009fd102475f089579d56f9c95237032e1f',
+    'cedf75ed684f33073346f7d2aadc3197ddc336fc7e843143cf9c5bd95a131667',
+    '3ec6f5b51025d3580e5eaba54971b6759a4bf166138ad8d4947f4bd4463e71c7',
+    '50717d12e9a438b5aa6a4746abb69e6fa9bbf56d802a325d71435e3d28c1fcf7',
+    '95d7fce4c820dc79e5e35e3fda5c25d0f77460978fcb63439ff4cb636189195b',
+    '968f9a04f183e8d19ac76d11a231d45f23b7f74a5a0667ce50e9946e273ddfc3',
+    'd771fd436212eb2336df2ca0ee0d97543e8d30ae8b01118136d88232c14ac47e',
+    'dd64b6c7ad3544c6145f232cc5e7ac72e1748276442e36b282463143ae04abff',
+    '3239d27f9e031ab71167c2a3432474715b1812adadd9110fba6c5b736eaeff55',
+    'ce8abf1f4b69365e351305cb5457eeb5e1e310b0636005e855f7af72c75c7b91'
+]
 
 
 def subtokenize(identifier):
@@ -70,13 +120,19 @@ def process(target):
     if target['language'] == 'java':
         try:
             javalang.parse.parse(target['the_code'])
-        except:
+        except Exception as ex:
+            if sys.argv[2] != 'gz':
+                print('Failed to validate: ' + target['from_file'])
+                print(target['the_code'])
+                print(ex)
             return False, []
     elif target['language'] == 'python':
         try:
             parser = driver.Driver(pygram.python_grammar, convert=pytree.convert)
             parser.parse_string(target['the_code'].strip() + '\n')
         except Exception:
+            if sys.argv[2] != 'gz':
+                print('Failed to validate: ' + target['from_file'])
             return False, []
 
     functions = processor.process_blob(target['the_code'])
@@ -86,6 +142,13 @@ def process(target):
             function["function"].strip().encode('utf-8')
         ).hexdigest()
 
+        if target['language'] == 'java':
+            if JAVA_REJECT_REGEX.search(function["function"]):
+                continue
+            if sha256 in BANNED_JAVA_SHAS:
+                # print("  - Skipped '{}'".format(sha256))
+                continue # Spoon transformer chokes on these, so exclude
+
         tokens_pre, tokens_post = ([], [])
 
         try:
@@ -94,7 +157,7 @@ def process(target):
                 function["function_tokens"]
             )
         except:
-            pass
+            continue
     
         results.append({
             "language": function["language"],
