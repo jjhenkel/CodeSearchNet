@@ -137,6 +137,7 @@ def process(target):
         try:
             parser = driver.Driver(pygram.python_grammar, convert=pytree.convert)
             parser.parse_string(target['the_code'].strip() + '\n')
+            ast.parse(target['the_code'])
         except Exception:
             if sys.argv[2] != 'gz':
                 print('Failed to validate: ' + target['from_file'])
