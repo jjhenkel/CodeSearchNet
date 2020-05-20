@@ -91,6 +91,14 @@ BANNED_JAVA_SHAS = [
     'b950fe37a5e620e37b80f3194f42abaab3ea08c0d53ec5ebe92a89126fc26d22'
 ]
 
+PY_REJECT_REGEX = re.compile('\) ->')
+BANNED_PY_SHAS = [
+    '6c4c00718d4ad438aeda74b1f11aa9b4a386abea598b54c813daad38b32432b5',
+    '1cb0a93c92bef56e64b37da0979da59a35ab3ea3d4dd5fcc7327efae0c091122',
+    '3aab95329c4ac0f2ed4ea30debc94eeb48367df83aa18edef896cf50744d4b73',
+    '5b1f872804478e3a48ea364c5ea771bf1fef52dad6cb4b9d535e11aea9b587e4'
+]
+
 
 def subtokenize(identifier):
     RE_WORDS = re.compile(r'''
@@ -154,6 +162,12 @@ def process(target):
             if JAVA_REJECT_REGEX.search(function["function"]):
                 continue
             if sha256 in BANNED_JAVA_SHAS:
+                # print("  - Skipped '{}'".format(sha256))
+                continue # Spoon transformer chokes on these, so exclude
+        elif target['language'] == 'python':
+            if PY_REJECT_REGEX.search(function["function"]):
+                continue
+            if sha256 in BANNED_PY_SHAS:
                 # print("  - Skipped '{}'".format(sha256))
                 continue # Spoon transformer chokes on these, so exclude
 
